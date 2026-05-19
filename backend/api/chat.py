@@ -5,10 +5,10 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ai.agent import ResumeAssistant, create_assistant
+from ai.tools.resume_tools import parse_resume_file
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger("truresume.chat")
@@ -141,19 +141,6 @@ async def upload_resume(
         content_size = len(content)
         logger.debug(f"File read | filename={file.filename} | size={content_size} bytes")
 
-        try:
-            text_content = content.decode("utf-8")
-        except UnicodeDecodeError:
-            try:
-                text_content = content.decode("latin-1")
-                logger.debug("Decoded file as latin-1 encoding")
-            except Exception:
-                logger.error(f"Failed to decode file | filename={file.filename}")
-                raise HTTPException(
-                    status_code=400,
-                    detail="Could not decode file content. Please ensure the file is text-based.",
-                )
-
         # Create assistant and pass resume content for parsing via agent
         assistant = create_assistant(
             session_id=session_id,
@@ -163,22 +150,31 @@ async def upload_resume(
 
         logger.debug(f"Resume assistant created | session_id={assistant.session_id}")
 
-        # Send message to agent with file content for parsing
-        result = assistant.invoke(
-            f"Please parse this resume content and extract the structured information. "
-            f"File type: {file_type}\n\nResume content:\n{text_content[:5000]}"
-        )
+        # Use parse_resume_file tool directly to extract structured data
+        # For PDF: pass raw bytes; for TXT: pass as decoded string
+        if file_type == "pdf":
+            file_content_param = content  # raw bytes for PDF
+        else:
+            try:
+                file_content_param = content.decode("utf-8")
+            except UnicodeDecodeError:
+                file_content_param = content.decode("latin-1")
 
-        logger.info(f"Resume parsed | session_id={assistant.session_id} | status={result.get('status')} | resp_len={len(result.get('response', ''))}")
+        tool_result = parse_resume_file.invoke({
+            "file_content": file_content_param,
+            "file_type": file_type,
+        })
 
-        # Return parsed response via the agent's interpretation
+        logger.info(f"Resume parsed via tool | session_id={assistant.session_id} | status={tool_result.get('status')}")
+
+        # Return parsed response
         return ResumeParseResponse(
-            status=result.get("status", "success"),
+            status=tool_result.get("status", "success"),
             file_type=file_type,
-            extracted_data={"response": result.get("response", "")},
-            raw_length=len(text_content),
+            extracted_data=tool_result.get("extracted_data", {}),
+            raw_length=content_size,
             parsed_at=datetime.utcnow().isoformat(),
-            error=result.get("error"),
+            error=tool_result.get("error"),
         )
     except HTTPException:
         raise

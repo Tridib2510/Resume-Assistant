@@ -95,6 +95,10 @@ class Router:
         messages = state.get("messages", [])
         last_message = messages[-1].content if messages else ""
 
+        print(f'router.route - messages count: {len(messages)}')
+        print(f'router.route - last_message preview: {last_message[:100] if last_message else "empty"}')
+        print(f'router.route - resume_info type: {type(state.get("resume_info"))}')
+
         user_context = f"Last user message: {last_message}"
 
         resume_info = state.get("resume_info")

@@ -12,8 +12,7 @@ from datetime import datetime
 from typing import Literal
 
 from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage
-from langgraph.prebuilt import create_react_agent
+from langchain_core.messages import AIMessage, HumanMessage
 
 from ai.graph import get_resume_assistant_graph
 from ai.state import (
@@ -21,14 +20,6 @@ from ai.state import (
     InterviewContext,
     ResumeAssistantState,
     ResumeInfo,
-)
-from ai.tools.resume_tools import (
-    calculate_resume_score,
-    extract_resume_info,
-    generate_resume_feedback,
-    parse_resume_file,
-    suggest_interview_questions,
-    validate_resume_completeness,
 )
 
 logger = logging.getLogger("truresume.agent")
@@ -147,19 +138,6 @@ class ResumeAssistant:
         self._initial_state: ResumeAssistantState = self._create_initial_state()
         self.graph = get_resume_assistant_graph()
 
-        self.agent = create_react_agent(
-            model=self.llm,
-            tools=[
-                extract_resume_info,
-                parse_resume_file,
-                calculate_resume_score,
-                suggest_interview_questions,
-                generate_resume_feedback,
-                validate_resume_completeness,
-            ],
-            state_modifier=self.system_prompt,
-        )
-
         logger.debug(f"ResumeAssistant initialized | session_id={self.session_id}")
 
     def _generate_session_id(self) -> str:
@@ -197,11 +175,13 @@ class ResumeAssistant:
         """
         logger.info(f"Invoke | session_id={self.session_id} | input_len={len(user_input)}")
 
-        self._initial_state["messages"] = self._initial_state["messages"] + [HumanMessage(content=user_input)]
+        # Add user message with system prompt context
+        full_input = f"{self.system_prompt}\n\nUser: {user_input}"
+        self._initial_state["messages"] = [HumanMessage(content=full_input)]
 
         try:
-            logger.debug(f"Agent invoking | session_id={self.session_id}")
-            result = self.agent.invoke(self._initial_state)
+            logger.debug(f"Graph invoking | session_id={self.session_id}")
+            result = self.graph.invoke(self._initial_state)
 
             ai_message = result.get("messages", [])[-1].content if result.get("messages") else "No response generated"
 
@@ -233,11 +213,12 @@ class ResumeAssistant:
         """
         logger.info(f"Stream | session_id={self.session_id} | input_len={len(user_input)}")
 
-        self._initial_state["messages"] = self._initial_state["messages"] + [HumanMessage(content=user_input)]
+        full_input = f"{self.system_prompt}\n\nUser: {user_input}"
+        self._initial_state["messages"] = [HumanMessage(content=full_input)]
 
         try:
-            logger.debug(f"Agent streaming | session_id={self.session_id}")
-            for event in self.agent.stream(self._initial_state):
+            logger.debug(f"Graph streaming | session_id={self.session_id}")
+            for event in self.graph.stream(self._initial_state):
                 if "messages" in event:
                     for message in event["messages"]:
                         if hasattr(message, "content") and message.content:

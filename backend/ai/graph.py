@@ -4,8 +4,9 @@ from langgraph.graph import END, StateGraph
 
 from ai.router import Router, create_router
 from ai.state import InterviewContext, ResumeAssistantState, ResumeInfo, ConversationMetadata
-from ai.tools import (
-    
+
+# Import tools - use .invoke() to call them properly
+from ai.tools.resume_tools import (
     calculate_resume_score,
     extract_resume_info,
     generate_resume_feedback,
@@ -39,9 +40,16 @@ def create_resume_assistant_graph(router: Router | None = None) -> StateGraph:
     workflow.set_entry_point("intake")
 
     # Add edges - conditional routing using LLM-based Router
+    def route_decision(state):
+        print(f'route_decision called with state keys: {list(state.keys())}')
+        print(f'messages count: {len(state.get("messages", []))}')
+        result = router_instance.route(state)
+        print(f'route_decision returning: {result}')
+        return result
+
     workflow.add_conditional_edges(
         "intake",
-        lambda state: router_instance.route(state),
+        route_decision,
         {
             "extract_resume": "extract_resume",
             "generate_feedback": "generate_feedback",
@@ -69,6 +77,8 @@ def intake_node(state: ResumeAssistantState) -> dict:
     Returns:
         dict: Updated state (intake passes to LLM router for decisions)
     """
+    print('intake_node')
+    print(f'intake messages: {state.get("messages", [])}')
     return {}
 
 
@@ -81,6 +91,7 @@ def extract_resume_node(state: ResumeAssistantState) -> dict:
     Returns:
         dict: Updated state with extracted resume info
     """
+    print('extract_resume')
     last_message = state["messages"][-1].content if state["messages"] else ""
 
     extracted = extract_resume_info.invoke(last_message)
@@ -109,13 +120,16 @@ def validate_resume_node(state: ResumeAssistantState) -> dict:
     Returns:
         dict: Updated state with validation results
     """
-    validation = validate_resume_completeness({"resume_info": state["resume_info"]})
+    
+    validation = validate_resume_completeness.invoke({
+        "state_data": {"resume_info": state["resume_info"].model_dump() if hasattr(state["resume_info"], "model_dump") else state["resume_info"]}
+    })
 
     needs_review = not validation["is_complete"] and validation["completion_percentage"] < 80
     is_complete = validation["can_generate_export"]
 
     new_context_window = state.get("context_window_used", 0) + 1000
-
+    print('validate_resume_node')
     return {
         "needs_resume_review": needs_review,
         "resume_complete": is_complete,
@@ -134,6 +148,8 @@ def generate_feedback_node(state: ResumeAssistantState) -> dict:
         dict: Updated state with feedback
     """
     resume_data = {}
+    print('generate_feedback_node')
+
     if hasattr(state.get("resume_info", {}), "model_dump"):
         resume_data = state["resume_info"].model_dump()
 
@@ -157,6 +173,7 @@ def interview_prep_node(state: ResumeAssistantState) -> dict:
     Returns:
         dict: Updated state with interview questions
     """
+    print('interview_prep_node')
     interview_ctx = state.get("interview_context", InterviewContext())
 
     role_target = None
@@ -186,6 +203,7 @@ def finalize_resume_node(state: ResumeAssistantState) -> dict:
     Returns:
         dict: Final state update
     """
+    print('finalize_resume_node')
     return {"resume_complete": True}
 
 
