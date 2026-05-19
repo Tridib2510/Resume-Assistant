@@ -6,6 +6,7 @@ This module provides a production-ready chatbot that assists users with:
 - Resume feedback and scoring
 """
 
+import logging
 import os
 from datetime import datetime
 from typing import Literal
@@ -21,13 +22,16 @@ from ai.state import (
     ResumeAssistantState,
     ResumeInfo,
 )
-from ai.tools import (
+from ai.tools.resume_tools import (
     calculate_resume_score,
     extract_resume_info,
     generate_resume_feedback,
+    parse_resume_file,
     suggest_interview_questions,
     validate_resume_completeness,
 )
+
+logger = logging.getLogger("truresume.agent")
 
 LLM_MODEL = "llama-3.3-70b-versatile"
 
@@ -43,7 +47,10 @@ def get_llm(temperature: float = 0.7) -> ChatGroq:
     """
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
+        logger.error("GROQ_API_KEY environment variable not set")
         raise ValueError("GROQ_API_KEY environment variable not set")
+
+    logger.debug(f"Creating LLM instance | model={LLM_MODEL} | temperature={temperature}")
 
     return ChatGroq(
         model=LLM_MODEL,
@@ -61,28 +68,53 @@ def create_system_prompt(conversation_type: Literal["resume_build", "interview_p
     Returns:
         str: System prompt for the agent
     """
-    base_prompt = """You are a professional resume assistant helping users with:
-- Building and polishing resumes
-- Interview preparation
-- Career advice and feedback
+    base_prompt = """You are TRUResume HIRE — a strict, factual hiring assistant with zero tolerance for hallucination.
 
-Be conversational but professional. Ask clarifying questions when needed.
-Focus on actionable advice and specific improvements.
-When extracting information, be thorough but empathetic about sensitive topics."""
+== HARD RULES ==
+1. ONLY use information explicitly provided by the user
+2. When data is MISSING: say "I don't have this information yet" — do NOT invent it
+3. NEVER guess names, emails, phone numbers, addresses, dates, companies, job titles, or skills
+4. NEVER assume a user has experience, education, or certifications they haven't mentioned
+5. If you need information to answer, ask a specific question — do not fill gaps with assumptions
+6. Be direct and professional. Hiring managers value accuracy over enthusiasm.
+
+== BEHAVIOR BY MODE ==
+
+RESUME BUILD MODE:
+- Ask one question at a time, starting with contact information
+- Confirm each piece of data before moving to the next section
+- When you have enough for a section, summarize what you've gathered and ask "Anything to add?"
+- Never proceed to "finalize" until all required fields are confirmed by the user
+
+INTERVIEW PREP MODE:
+- Only generate questions when the target role is confirmed
+- If role is unknown, ask: "What position are you interviewing for?"
+- Questions must match the stated experience level and industry
+
+FEEDBACK MODE:
+- Only provide feedback when resume data exists
+- If no data: "I'd need to see your resume first to give you feedback. Would you like to share it?"
+- Be specific: reference actual content they've shared, not hypothetical perfect resumes
+
+== SAMPLE PHRASES ==
+- Missing data: "I don't have your email yet — what email should I use for your contact section?"
+- Unknown info: "I haven't seen your work history. Could you share your most recent role?"
+- Uncertainty: "I don't have enough information about that yet. Could you tell me more?" """
 
     type_specific = {
         "resume_build": """
-You are helping the user build their resume. Extract information naturally through conversation.
-Ask about: contact details, work history, education, skills, and certifications.
-Ensure all critical resume sections are complete before finalizing.""",
+You are in RESUME BUILD MODE. Extract and confirm information section by section.
+Order: contact info → summary → experience → education → skills → certifications.
+Always confirm before storing data. Say "I've noted [X]. Does that sound right?" """,
         "interview_prep": """
-You are helping the user prepare for interviews. Ask about their target role, company, and experience level.
-Generate relevant practice questions and provide tips for answering.""",
+You are in INTERVIEW PREP MODE. Ask for the target role and experience level first.
+Generate practice questions only after confirming these details. """,
         "feedback": """
-You are reviewing the user's existing resume or CV content. Provide specific, actionable feedback.
-Focus on: clarity, impact, completeness, and ATS optimization.""",
+You are in FEEDBACK MODE. Wait for the user to share resume content.
+Provide structured feedback: strengths, gaps, and specific improvements. """,
         "general": """
-You are having a general career assistance conversation. Be helpful and adaptive.""",
+You are in general assistance mode. If the user wants to build a resume, start resume_build.
+If they ask for interview prep, start interview_prep. If they share resume content, start feedback. """,
     }
 
     return base_prompt + "\n\n" + type_specific.get(conversation_type, type_specific["general"])
@@ -108,6 +140,8 @@ class ResumeAssistant:
         self.user_id = user_id
         self.conversation_type = conversation_type
 
+        logger.info(f"Creating ResumeAssistant | session_id={self.session_id} | user_id={self.user_id} | type={self.conversation_type}")
+
         self.llm = get_llm()
         self.system_prompt = create_system_prompt(conversation_type)
         self._initial_state: ResumeAssistantState = self._create_initial_state()
@@ -117,6 +151,7 @@ class ResumeAssistant:
             model=self.llm,
             tools=[
                 extract_resume_info,
+                parse_resume_file,
                 calculate_resume_score,
                 suggest_interview_questions,
                 generate_resume_feedback,
@@ -124,6 +159,8 @@ class ResumeAssistant:
             ],
             state_modifier=self.system_prompt,
         )
+
+        logger.debug(f"ResumeAssistant initialized | session_id={self.session_id}")
 
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
@@ -158,12 +195,17 @@ class ResumeAssistant:
         Returns:
             dict: Response containing message, state updates, and metadata
         """
+        logger.info(f"Invoke | session_id={self.session_id} | input_len={len(user_input)}")
+
         self._initial_state["messages"] = self._initial_state["messages"] + [HumanMessage(content=user_input)]
 
         try:
+            logger.debug(f"Agent invoking | session_id={self.session_id}")
             result = self.agent.invoke(self._initial_state)
 
             ai_message = result.get("messages", [])[-1].content if result.get("messages") else "No response generated"
+
+            logger.info(f"Invoke completed | session_id={self.session_id} | resp_len={len(ai_message)}")
 
             return {
                 "response": ai_message,
@@ -172,6 +214,7 @@ class ResumeAssistant:
                 "status": "success",
             }
         except Exception as e:
+            logger.error(f"Invoke error | session_id={self.session_id} | error={str(e)}", exc_info=True)
             return {
                 "response": f"I encountered an error: {str(e)}. Please try again.",
                 "session_id": self.session_id,
@@ -188,15 +231,20 @@ class ResumeAssistant:
         Yields:
             str: Response chunks as they are generated
         """
+        logger.info(f"Stream | session_id={self.session_id} | input_len={len(user_input)}")
+
         self._initial_state["messages"] = self._initial_state["messages"] + [HumanMessage(content=user_input)]
 
         try:
+            logger.debug(f"Agent streaming | session_id={self.session_id}")
             for event in self.agent.stream(self._initial_state):
                 if "messages" in event:
                     for message in event["messages"]:
                         if hasattr(message, "content") and message.content:
+                            logger.debug(f"Stream chunk | session_id={self.session_id} | chunk_len={len(message.content)}")
                             yield message.content
         except Exception as e:
+            logger.error(f"Stream error | session_id={self.session_id} | error={str(e)}", exc_info=True)
             yield f"Error: {str(e)}"
 
     def reset(self) -> None:

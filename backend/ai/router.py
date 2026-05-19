@@ -6,8 +6,10 @@ from typing import Literal
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+load_dotenv()
 
-from state import ResumeAssistantState
+from ai.state import ResumeAssistantState
 
 
 class RouteToNode(BaseModel):
@@ -26,11 +28,15 @@ class RouteToNode(BaseModel):
         default=1.0,
         ge=0.0,
         le=1.0,
-        description="Confidence score for this routing decision (0.0 to 1.0)"
+        description="Confidence score for this routing decision (0.0 to 1.0). Below 0.5 means low certainty — route to extract_resume."
     )
     reasoning: str = Field(
         default="",
         description="Brief explanation for why this routing decision was made"
+    )
+    missing_data: list[str] = Field(
+        default_factory=list,
+        description="List of specific data fields that are MISSING and should NOT be hallucinated (e.g., 'email', 'experience', 'skills')"
     )
 
 
@@ -53,17 +59,27 @@ class Router:
             temperature=0.3,
         )
 
-        self.system_prompt = """You are a routing assistant for a Resume Assistant chatbot.
-Your job is to analyze the conversation and determine the appropriate next node.
+        self.system_prompt = """You are TRUResume HIRE — a strict, factual hiring assistant. You have zero tolerance for hallucination.
 
-Available nodes:
-- extract_resume: Route here when user wants to build, create, or share resume content
-- generate_feedback: Route here when user wants feedback, review, or critique of their resume
-- interview_prep: Route here when user wants interview preparation or practice questions
-- finalize_resume: Route here when resume is complete and ready to be finalized
-- END: Route here to end the conversation gracefully
+== HARD RULES ==
+1. ONLY use information explicitly provided by the user or extracted from their input
+2. When data is MISSING: explicitly say "I don't have this information yet" — do NOT invent details
+3. NEVER guess at names, emails, skills, job titles, companies, dates, or any resume content
+4. NEVER assume a user has experience they haven't mentioned
+5. If unsure about routing, route to extract_resume to gather more information
+6. Confidence score reflects how certain you are — if you have no data, say so
 
-Be decisive and provide clear reasoning for your routing decision."""
+== AVAILABLE NODES ==
+- extract_resume: User wants to build, add, or update resume content
+- generate_feedback: User wants critique or review (only if resume data exists)
+- interview_prep: User wants interview questions (only if target role is known)
+- finalize_resume: Resume is complete (all required fields filled)
+- END: User is done or conversation has ended gracefully
+
+== DECISION MAKING ==
+- Default to extract_resume if you have no clear signal
+- Feedback and interview_prep require existing resume data — if none, route to extract_resume
+- Be decisive. Low confidence = route to extract_resume to gather more data."""
 
         self.structured_llm = self.llm.with_structured_output(RouteToNode)
 
@@ -86,6 +102,8 @@ Be decisive and provide clear reasoning for your routing decision."""
             resume_fields = resume_info.model_dump()
             if any(resume_fields.values()):
                 user_context += f"\n\nResume info already has data: {[k for k, v in resume_fields.items() if v]}"
+            else:
+                user_context += "\n\nNo resume data extracted yet."
 
         is_interview_mode = state.get("is_interview_mode", False)
         if is_interview_mode:
@@ -93,15 +111,23 @@ Be decisive and provide clear reasoning for your routing decision."""
 
         prompt = f"""{self.system_prompt}
 
+== CURRENT STATE ==
 {user_context}
 
-Determine the next routing decision:"""
+== YOUR TASK ==
+Analyze the conversation and decide the next node. If you have LOW CONFIDENCE or MISSING DATA, route to extract_resume.
+
+Return your routing decision now."""
 
         try:
             result = self.structured_llm.invoke([
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=prompt),
             ])
+
+            if result.confidence < 0.5 or result.missing_data:
+                return "extract_resume"
+
             return result.next_node
         except Exception:
             return "extract_resume"
