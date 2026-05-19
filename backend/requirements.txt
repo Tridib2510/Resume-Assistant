@@ -1,0 +1,6 @@
+langchain
+langgraph
+langchain_groq
+fastapi[standard]
+langchain_classic
+python_dotenv
