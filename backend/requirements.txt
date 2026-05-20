@@ -1,6 +1,7 @@
 langchain
 langgraph
 langchain_groq
-fastapi[standard]
+langchain_community
 langchain_classic
+fastapi[standard]
 python_dotenv
