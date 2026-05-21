@@ -1,5 +1,5 @@
 from ai.state import AgentState
-from ai.router import llm_with_structure, question_router
+from ai.router import llm, llm_with_structure, question_router
 from langchain_classic.document_loaders import PyPDFLoader
 from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -45,8 +45,8 @@ def extract_resume_data(state:AgentState):
     )
 
     return {
-        "documents":docs,
-        "retriever":retriever
+        "documents": [doc.page_content for doc in docs],
+        "retriever": retriever
     }
     
 
@@ -70,11 +70,11 @@ def chat(state:AgentState):
 
     rag_chain = (
     {
-        "context":  RunnableLambda(lambda x: x["input"]) | retriever, ## before sending to retriver expects text not dictionary so before sending to retriver we only extract the text first through RunnableLambda(lambda x: x["input"])
+        "context":  RunnableLambda(lambda x: x["question"]) | retriever, ## before sending to retriver expects text not dictionary so before sending to retriver we only extract the text first through RunnableLambda(lambda x: x["input"])
         "input": RunnablePassthrough()
     }
     | prompt
-    | llm_with_structure
+    | llm
     )
 
     res=rag_chain.invoke({"question":question})
@@ -109,6 +109,6 @@ def build_graph():
 
 graph=build_graph()
 
-for output in graph.stream({"question":"Tell me about this person from the provided resume","file_path":"resume.pdf"}):
-    for key,value in output.values():
+for events in graph.stream({"question":"Tell me about this person from the provided resume","file_path":"resume.pdf"}):
+    for key,value in events.items():
         print(value)
