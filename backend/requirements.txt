@@ -8,3 +8,4 @@ python_dotenv
 pypdf
 langchain_huggingface
 sentence-transformers
+faiss-cpu

@@ -38,7 +38,7 @@ def extract_resume_data(state:AgentState):
     text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
     docs=loader.load_and_split(text_splitter=text_splitter)
     embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectordb=FAISS.from_documents(documents=docs,embeddings=embeddings)
+    vectordb=FAISS.from_documents(documents=docs,embedding=embeddings)
     
     retriever=vectordb.as_retriever(
         search_type="similarity"
@@ -94,15 +94,11 @@ def build_graph():
         START,
         route_question,
         {
-            'extract_resume_data':'extract_resume_data',
-            'chat':'chat'
+            'extract_resume_data':'extract_resume_data'
         }
     )
 
-    workflow.add_conditional_edges(
-        'extract_resume_data',
-        tools_condition
-        )
+    workflow.add_edge('extract_resume_data', 'chat')
     workflow.add_edge('tools','extract_resume_data')
     workflow.add_edge('extract_resume_data','chat')
     workflow.add_edge('chat',END)
@@ -113,6 +109,6 @@ def build_graph():
 
 graph=build_graph()
 
-for output in graph.stream({"question":"Tell me about this person","file_path":"resume.pdf"}):
+for output in graph.stream({"question":"Tell me about this person from the provided resume","file_path":"resume.pdf"}):
     for key,value in output.values():
         print(value)
