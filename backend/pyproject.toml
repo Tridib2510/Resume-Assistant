@@ -10,6 +10,9 @@ dependencies = [
     "langchain-classic>=1.0.7",
     "langchain-community>=0.4.1",
     "langchain-groq>=1.1.2",
+    "langchain-huggingface>=1.2.2",
     "langgraph>=1.2.0",
+    "pypdf>=6.12.0",
     "python-dotenv>=1.2.2",
+    "sentence-transformers>=5.5.1",
 ]
