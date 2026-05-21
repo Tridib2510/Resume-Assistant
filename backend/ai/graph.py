@@ -20,7 +20,7 @@ def route_question(state:AgentState):
     str=Next node to call
     
     """
-    question=state['question']
+    question=state.question
 
     next_node:str=llm_with_structure.invoke({"question":question})
 
@@ -33,7 +33,7 @@ def extract_resume_data(state:AgentState):
     Returns:
     State(dict): New key added to state 
     """
-    file_path=state['file_path']
+    file_path=state.file_path
     loader=PyPDFLoader(file_path=file_path)
     text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
     docs=loader.load_and_split(text_splitter=text_splitter)
@@ -59,8 +59,8 @@ def chat(state:AgentState):
     Returns:
     State(dict): New key added to state 
     """
-    question=state['question']
-    retriever=state['retriever']
+    question=state.question
+    retriever=state.retriever
 
     SYSTEM_PROMPT="""
     You are a gmail assistant please answer queries based on this
