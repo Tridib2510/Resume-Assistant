@@ -1,5 +1,5 @@
 from ai.state import AgentState
-from ai.router import llm_with_structure
+from ai.router import llm_with_structure, question_router
 from langchain_classic.document_loaders import PyPDFLoader
 from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -22,7 +22,7 @@ def route_question(state:AgentState):
     """
     question=state.question
 
-    next_node:str=llm_with_structure.invoke({"question":question})
+    next_node:str=question_router.invoke({"question":question})
 
     return next_node.datasource
 
