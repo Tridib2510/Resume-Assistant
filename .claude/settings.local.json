@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path backend -Recurse -File -Depth 3)",
+      "Bash(Select-Object FullName, Length, LastWriteTime)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(bun run *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(bun add *)"
+    ]
+  }
+}

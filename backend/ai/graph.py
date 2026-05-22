@@ -12,7 +12,8 @@ from langchain_astradb import AstraDBVectorStore
 from langchain.messages import AIMessage,HumanMessage
 
 
-from langgraph.prebuilt import ToolNode,tools_condition
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import InMemorySaver
 from langchain_classic.indexes.vectorstore import VectorStoreIndexWrapper
 from ai.tools.resume import tools
 from langchain_groq import ChatGroq
@@ -22,6 +23,8 @@ load_dotenv()
 groq_api_key=os.environ['GROQ_API_KEY']
 
 chat_history=[]
+
+memory = InMemorySaver()
 
 def get_vectorstore():
     embeddings=HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -35,9 +38,7 @@ def get_vectorstore():
     return astra_vector_store
 
 astra_vector_store =get_vectorstore()
-retriever=astra_vector_store.as_retriever(
- search_type="similarity"
-)
+
 
 def route_question(state:AgentState):
     """Route question to wiki extract_resume_data or chat 
@@ -64,15 +65,25 @@ def extract_resume_data(state:AgentState):
     loader=PyPDFLoader(file_path=file_path)
     text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
     docs=loader.load_and_split(text_splitter=text_splitter)
+    
+    user_id=state['user_id']
+    for doc in docs:
+        doc.metadata["user_id"] = user_id
 
-
+    user_id=state['user_id']
+    print('user_id',user_id)
     astra_vector_store.add_documents(docs)
 
 
     llm=ChatGroq(api_key=groq_api_key,model="llama-3.3-70b-versatile")
     llm=llm.bind_tools(tools)
 
-    
+    retriever = astra_vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs={
+            "filter": {"user_id": user_id}  # only this user's docs
+        }
+    )
 
     return {
         "messages":llm.invoke(state['messages']),
@@ -147,6 +158,16 @@ Chat History:
 
     prompt=ChatPromptTemplate.from_messages([("system",SYSTEM_PROMPT),("human","{input}")])
 
+    user_id=state['user_id']
+    print('user-id',user_id)
+
+    retriever = astra_vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs={
+            "filter": {"user_id": user_id}  # only this user's docs
+        }
+    )
+
     rag_chain = (
     {
         "context": RunnableLambda(lambda x: x["input"]) | retriever,
@@ -188,71 +209,9 @@ def build_graph():
     workflow.add_edge('extract_resume_data', 'chat')
     workflow.add_edge('chat',END)
 
-    graph=workflow.compile()
+    graph=workflow.compile(checkpointer=memory)
 
     return graph
 
 graph=build_graph()
 
-user_input="Tell me about the projects done by the applicant"
-chat_history.append(HumanMessage(user_input))
-
-for event in graph.stream({
-    "messages": [("user", user_input)],
-    "file_path": "resume.pdf"
-}):
-
-    for node_name, state in event.items():
-
-        
-      if node_name == "chat":
-        # Final answer
-        if "answer" in state and state["answer"]:
-            
-            answer = state["answer"]
-
-            # AIMessage -> text
-            if hasattr(answer, "content"):
-                print(answer.content)
-                chat_history.append(AIMessage("answer.content"))
-            else:
-                print(answer)
-
-        # Retrieved docs
-        if "documents" in state and state["documents"]:
-            print("\nRetrieved Documents:")
-            for doc in state["documents"][:2]:
-                print(doc[:300])
-                print()
-print('-------------------------------------------------')
-
-user_input="Tell me about the last question asked"
-chat_history.append(HumanMessage(user_input))
-
-
-for event in graph.stream({
-    "messages": [("user", user_input)]
-}):
-
-    for node_name, state in event.items():
-
-        
-      if node_name == "chat":
-        # Final answer
-        if "answer" in state and state["answer"]:
-            
-            answer = state["answer"]
-
-            # AIMessage -> text
-            if hasattr(answer, "content"):
-                print(answer.content)
-                chat_history.append(AIMessage(answer.content))
-            else:
-                print(answer)
-
-        # Retrieved docs
-        if "documents" in state and state["documents"]:
-            print("\nRetrieved Documents:")
-            for doc in state["documents"][:2]:
-                print(doc[:300])
-                print()

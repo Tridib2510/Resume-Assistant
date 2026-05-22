@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Tridib Roy Chowdhury\\\\OneDrive\\\\Desktop\\\\CODING\\\\Agentic_AI_System\\\\backend\" -Force)",
-      "Bash(Select-Object Name, Mode)",
-      "Bash(powershell *)"
-    ]
-  }
-}

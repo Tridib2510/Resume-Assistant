@@ -11,5 +11,5 @@ class AgentState(TypedDict):
     file_path:str
     answer:Optional[str]=None
     documents:Optional[List[str]]=Field(default_factory=list)
-    retriever:Optional[Any]=None
+    
     

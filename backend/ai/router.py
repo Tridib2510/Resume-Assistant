@@ -36,8 +36,3 @@ router_prompt=ChatPromptTemplate(
     ])
 
 question_router=router_prompt | llm_with_structure 
-
-
-
-
-

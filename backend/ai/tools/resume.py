@@ -1,59 +1,64 @@
 from langchain.tools import tool
 from langchain_groq import ChatGroq
-from ai.state import AgentState
-from pydantic import BaseModel,Field
-from typing import List
 import os
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_classic.prompts import ChatPromptTemplate
 
-class Answer(BaseModel):
-    name:str=Field(...,description="Name of the candidate")
-    email:str=Field(...,description="Email of the candidate")
-    phone:str=Field(...,description="Phone number of the candidate")
-    skills:str=Field(...,description="Give the Technical skills that the candidate has")
-    projects:List[str]=[Field(...,description="List of projects that the candidate has worked on")]
-    links:List[str]=[Field(...,description="List of links that the candidate has provided")]
+load_dotenv()
 
 
 def get_llm():
-    return ChatGroq(model="llama-3.3-70b-versatile",api_key=os.environ['GROQ_API_KEY'])
+    return ChatGroq(model="llama-3.3-70b-versatile", api_key=os.environ['GROQ_API_KEY'])
+
 
 @tool
-def resume_parser(state:AgentState):
+def resume_parser(user_id: str, question: str) -> dict:
     """
-    Parses the resume using structured output
+    Parses the resume and answers questions about the candidate.
     """
-    # print('resume_parser')
-    docs=state['documents']
-    llm=get_llm()
-    retriever=state['retriever']
+    from langchain_astradb import AstraDBVectorStore
+    from langchain_huggingface import HuggingFaceEmbeddings
 
-    SYSTEM_PROMPT="""
-    You are a resume assistant .
-    Use the following pieces of retrieved context to answer the question. If you don't know the answer just say that you don't know don't fabricate anything
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    vector_store = AstraDBVectorStore(
+        collection_name="langchain_integration_demo",
+        embedding=embeddings,
+        token=os.environ['ASTRA_DB_APPLICATION_TOKEN'],
+        api_endpoint=os.environ['ASTRA_DB_API_ENDPOINT'],
+        namespace=os.environ['ASTRA_DB_KEYSPACE'],
+    )
+
+    retriever = vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs={"filter": {"user_id": user_id}}
+    )
+
+    llm = get_llm()
+
+    SYSTEM_PROMPT = """
+    You are a resume assistant.
+    Use the following pieces of retrieved context to answer the question.
+    If you don't know the answer just say that you don't know, don't fabricate anything.
     {context}
     """
 
-    llm_with_structure=llm.with_structured_output(Answer)
-    prompt=ChatPromptTemplate.from_messages([("system",SYSTEM_PROMPT),("human","{input}")])
+    prompt = ChatPromptTemplate.from_messages([("system", SYSTEM_PROMPT), ("human", "{input}")])
 
     rag_chain = (
-    {
-        "context":  RunnableLambda(lambda x: x["input"]) | retriever, ## before sending to retriver expects text not dictionary so before sending to retriver we only extract the text first through RunnableLambda(lambda x: x["input"])
-        "input": RunnablePassthrough()
-    }
-    | prompt
-    | llm_with_structure
+        {
+            "context": RunnableLambda(lambda x: x["input"]) | retriever,
+            "input": RunnablePassthrough()
+        }
+        | prompt
+        | llm
     )
 
-    res=rag_chain.invoke({"input":"Tell me about the applicant"})
+    res = rag_chain.invoke({"input": question})
 
     return {
-        "answer":res
+        "answer": res.content if hasattr(res, 'content') else str(res)
     }
 
-tools=[
-    resume_parser
-]
+
+tools = [resume_parser]
