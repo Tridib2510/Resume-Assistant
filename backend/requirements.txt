@@ -9,3 +9,4 @@ pypdf
 langchain_huggingface
 sentence-transformers
 faiss-cpu
+langchain-astradb

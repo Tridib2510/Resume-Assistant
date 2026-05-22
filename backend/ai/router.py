@@ -19,9 +19,15 @@ llm_with_structure=llm.with_structured_output(Router)
 
 
 SYSTEM_PROMPT="""
-You are an expert at routing a user question to a chat or extract_resume_data 
-If the user just asks a question then direct it to chat and if the user also sends this resume then send it to extract_resume_data
+You are an expert routing assistant for a resume analysis system.
 
+Given a user question, choose the appropriate route:
+
+1. "extract_resume_data" - When the user provides a resume file and wants information extracted from it (e.g., skills, experience, projects, achievements)
+
+2. "chat" - When the user asks a general question that doesn't require resume data extraction
+
+Return one of these two values based on what the user is asking for.
 """
 
 router_prompt=ChatPromptTemplate(

@@ -25,6 +25,7 @@ def resume_parser(state:AgentState):
     """
     Parses the resume using structured output
     """
+    # print('resume_parser')
     docs=state['documents']
     llm=get_llm()
     retriever=state['retriever']
@@ -40,7 +41,7 @@ def resume_parser(state:AgentState):
 
     rag_chain = (
     {
-        "context":  RunnableLambda(lambda x: x["question"]) | retriever, ## before sending to retriver expects text not dictionary so before sending to retriver we only extract the text first through RunnableLambda(lambda x: x["input"])
+        "context":  RunnableLambda(lambda x: x["input"]) | retriever, ## before sending to retriver expects text not dictionary so before sending to retriver we only extract the text first through RunnableLambda(lambda x: x["input"])
         "input": RunnablePassthrough()
     }
     | prompt
