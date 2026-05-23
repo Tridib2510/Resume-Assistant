@@ -11,7 +11,7 @@ router = APIRouter()
 
 async def event_generator(user_id: str, query: str, file_path: str):
     config = {"configurable": {"thread_id": user_id}}
-    for event in graph.stream({
+    async for event in graph.astream({
         "messages": [("user", query)],
         "file_path": file_path,
         "user_id": user_id
@@ -19,12 +19,10 @@ async def event_generator(user_id: str, query: str, file_path: str):
         for node_name, state in event.items():
             if node_name == "chat":
                 if "answer" in state and state["answer"]:
-                    answer = state["answer"]
-                    if hasattr(answer, "content"):
-                        yield f"data: {answer.content}\n\n"
-                    else:
-                        yield f"data: {answer}\n\n"
-
+                    # LLMResponseStructure has applicant (Answer object) and generation (text)
+                    result = state["answer"]
+                    yield f"data: {result}"
+                   
                 if "documents" in state and state["documents"]:
                     for doc in state["documents"][:2]:
                         yield f"data: [DOC] {doc[:300]}\n\n"
@@ -64,11 +62,9 @@ async def chat_event_generator(user_id: str, query: str):
         for node_name, state in event.items():
             if node_name == "chat":
                 if "answer" in state and state["answer"]:
-                    answer = state["answer"]
-                    if hasattr(answer, "content"):
-                        yield f"data: {answer.content}\n\n"
-                    else:
-                        yield f"data: {answer}\n\n"
+                    # For chat, use the generation field (text response) not applicant
+                    result = state["answer"]
+                    yield f"data: {result}"
 
                 if "documents" in state and state["documents"]:
                     for doc in state["documents"][:2]:
@@ -79,5 +75,5 @@ async def chat_event_generator(user_id: str, query: str):
 async def chat(request: ChatRequest):
     return StreamingResponse(
         chat_event_generator(request.user_id, request.query),
-        media_type="text/event-stream"
+        media_type="application/json"
     )
