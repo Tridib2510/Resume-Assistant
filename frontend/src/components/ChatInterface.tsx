@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { ChatMessage } from "./ChatMessage";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Loader2, Plus } from "lucide-react";
+import { Send, Loader2 } from "lucide-react";
 import type { Message } from "../App";
 
 interface ChatInterfaceProps {
@@ -18,6 +18,7 @@ interface ChatInterfaceProps {
 
 export function ChatInterface({ session, onUpdateMessages, onResumeUploaded, apiUrl }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
+  const [id,setId]=useState("")
   const [isUploading, setIsUploading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -46,7 +47,7 @@ export function ChatInterface({ session, onUpdateMessages, onResumeUploaded, api
       const response = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: session.id, query: text }),
+        body: JSON.stringify({ user_id: localStorage.getItem("user_id"), query: text }),
       });
 
       if (!response.ok) throw new Error("Chat failed");
@@ -132,9 +133,11 @@ export function ChatInterface({ session, onUpdateMessages, onResumeUploaded, api
     try {
       const formData = new FormData();
       formData.append("user_id", uploadId);
-      formData.append("query", "tell me about this applicant");
+      formData.append("query", "I have uploaded the following resume");
       formData.append("file", file);
+      localStorage.setItem("user_id", uploadId);
 
+      setId(uploadId)
       const response = await fetch(`${apiUrl}/upload_resume`, {
         method: "POST",
         body: formData,
@@ -249,19 +252,6 @@ export function ChatInterface({ session, onUpdateMessages, onResumeUploaded, api
       {/* Input area */}
       <div className="p-4 border-t border-border">
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            title="Upload Resume"
-          >
-            {isUploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
-          </Button>
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}
