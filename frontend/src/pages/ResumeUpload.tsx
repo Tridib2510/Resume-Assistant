@@ -74,7 +74,7 @@ export function ResumeUpload() {
       formData.append("file", file);
       localStorage.setItem("user_id", id);
 
-      const response = await fetch("http://localhost:8000/v1/graph/upload_resume", {
+      const response = await fetch(`${process.env.BUN_PUBLIC_BACKEND_ENDPOINT}/v1/graph/upload_resume`, {
         method: "POST",
         body: formData,
       });

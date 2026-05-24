@@ -235,7 +235,7 @@ Chat History:
         {
             "context": RunnableLambda(lambda x: context_str),
             "input": RunnableLambda(lambda x: question),
-            "chat_history": RunnableLambda(lambda x: chat_history)
+            "chat_history": RunnableLambda(lambda x:state['messages'])
         }
         | prompt
         | chat_llm_with_response

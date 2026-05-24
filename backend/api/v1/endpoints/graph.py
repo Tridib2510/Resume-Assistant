@@ -1,18 +1,22 @@
 from fastapi import APIRouter, Body, File, UploadFile, BackgroundTasks
+from langchain.messages import AIMessage,HumanMessage
 from fastapi.responses import StreamingResponse
+from fastapi import Request
 from pydantic import BaseModel
 from ai.graph import graph
 import tempfile
 import os
 import uuid
+from typing import List
 
 router = APIRouter()
 
 
-async def event_generator(user_id: str, query: str, file_path: str):
+async def event_generator(user_id: str, query: str, file_path: str,history:list):
     config = {"configurable": {"thread_id": user_id}}
+    history.append(HumanMessage(query))
     async for event in graph.astream({
-        "messages": [("user", query)],
+        "messages": [("user",query)],
         "file_path": file_path,
         "user_id": user_id
     }, config=config):
@@ -21,6 +25,10 @@ async def event_generator(user_id: str, query: str, file_path: str):
                 if "answer" in state and state["answer"]:
                     # LLMResponseStructure has applicant (Answer object) and generation (text)
                     result = state["answer"]
+                    if result.generation != None:
+                        history.append(
+                            AIMessage(content=result.generation)
+                        )
                     yield f"data: {result}"
                    
                 if "documents" in state and state["documents"]:
@@ -30,6 +38,7 @@ async def event_generator(user_id: str, query: str, file_path: str):
 
 @router.post("/upload_resume")
 async def upload_resume(
+    req:Request,
     user_id: str = Body(...),
     query: str = Body(...),
     file: UploadFile = File(...),
@@ -39,24 +48,29 @@ async def upload_resume(
     tmp_name = f"{uuid.uuid4().hex}.pdf"
     tmp_path = os.path.join(tmp_dir, tmp_name)
 
+    if not hasattr(req.app.state, "history"):
+        req.app.state.history = []
+    
+
     with open(tmp_path, "wb") as f:
         f.write(await file.read())
 
     return StreamingResponse(
-        event_generator(user_id, query, tmp_path),
+        event_generator(user_id, query, tmp_path,req.app.state.history),
         media_type="text/event-stream"
     )
 
 
-class ChatRequest(BaseModel):
+class Form(BaseModel):
     user_id: str = Body(...)
     query: str = Body(...)
 
 
-async def chat_event_generator(user_id: str, query: str):
+async def chat_event_generator(history:list,user_id: str, query: str):
     config = {"configurable": {"thread_id": user_id}}
+    history.append(HumanMessage(query))
     async for event in graph.astream({
-        "messages": [("user", query)],
+        "messages": [("user",query)],
         "user_id": user_id
     }, config=config):
         for node_name, state in event.items():
@@ -64,6 +78,10 @@ async def chat_event_generator(user_id: str, query: str):
                if "answer" in state and state["answer"]:
                     # LLMResponseStructure has applicant (Answer object) and generation (text)
                     result = state["answer"]
+                    if result.generation != None:
+                        history.append(
+                            AIMessage(content=result.generation)
+                        )
                     yield f"data: {result}"
 
                if "documents" in state and state["documents"]:
@@ -72,8 +90,12 @@ async def chat_event_generator(user_id: str, query: str):
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(req:Request,body: Form):
+
+    if not hasattr(req.app.state, "history"):
+        req.app.state.history = []
+
     return StreamingResponse(
-        chat_event_generator(request.user_id, request.query),
+        chat_event_generator(req.app.state.history,body.user_id, body.query),
         media_type="text/event-stream"
     )

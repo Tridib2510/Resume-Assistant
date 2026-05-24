@@ -45,7 +45,7 @@ export function Chat() {
     setIsStreaming(true);
 
     try {
-      const response = await fetch("http://localhost:8000/v1/graph/chat", {
+      const response = await fetch(`${process.env.BUN_PUBLIC_BACKEND_ENDPOINT}/v1/graph/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: localStorage.getItem("user_id"), query: text }),

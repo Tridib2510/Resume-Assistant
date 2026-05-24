@@ -1,6 +1,7 @@
 import tailwind from "bun-plugin-tailwind";
 import { rm } from "node:fs/promises";
 import path from "node:path";
+import "dotenv/config";
 
 const outdir = path.join(process.cwd(), "dist");
 await rm(outdir, { recursive: true, force: true });
@@ -15,7 +16,8 @@ const result = await Bun.build({
   target: "browser",
   sourcemap: "linked",
   define: {
-    "process.env.NODE_ENV": JSON.stringify("production"),
+    "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
+    "process.env.VITE_PUBLIC_BACKEND_ENDPOINT": JSON.stringify(process.env.VITE_PUBLIC_BACKEND_ENDPOINT),
   },
 });
 
