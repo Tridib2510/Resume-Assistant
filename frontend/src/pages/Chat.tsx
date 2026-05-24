@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, Upload, FileText, Sparkles, MessageCircle, CheckCircle } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Toaster, toast } from "../components/Toaster";
 
 interface Message {
   id: string;
@@ -106,6 +107,13 @@ export function Chat() {
         }
       } catch {
         // Keep fullContent as fallback
+      }
+
+      // Check if the response indicates an invalid/no resume
+      if (generationText.includes("Please upload a valid resume")) {
+        toast("Please provide a valid resume. The uploaded document does not appear to be a resume.", "error");
+        setIsStreaming(false);
+        return;
       }
 
       const assistantMsg: Message = {
@@ -303,6 +311,9 @@ export function Chat() {
           </p>
         </div>
       </div>
+
+      {/* Toast Notifications */}
+      <Toaster />
     </div>
   );
 }

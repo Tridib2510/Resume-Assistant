@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Upload, Loader2, CheckCircle, AlertCircle, Sparkles, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ResumeModal } from "@/components/ResumeModal";
+import { Toaster, toast } from "../components/Toaster";
 
 interface ResumeData {
   name?: string;
@@ -176,13 +177,30 @@ export function ResumeUpload() {
           }
 
           setResumeData(parsed);
+          setShowModal(true);
+
+          // Check if the response indicates an invalid resume
+          const cleanedForCheck = cleanContent.trim();
+          if (cleanedForCheck.includes("Please upload a valid resume")) {
+            toast("Please provide a valid resume. The uploaded document does not appear to be a resume.", "error");
+            setShowModal(false);
+            return;
+          }
         } else {
           // Fallback to raw text if parsing fails
-          setResumeData({ rawText: cleanContent.trim() });
+          const rawText = cleanContent.trim();
+          setResumeData({ rawText: rawText });
+
+          // Check if the raw text indicates an invalid resume
+          if (rawText.includes("Please upload a valid resume")) {
+            toast("Please provide a valid resume. The uploaded document does not appear to be a resume.", "error");
+            setShowModal(false);
+            return;
+          }
+
+          setShowModal(true);
         }
       }
-
-      setShowModal(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -323,6 +341,9 @@ export function ResumeUpload() {
         onClose={() => setShowModal(false)}
         data={resumeData || {}}
       />
+
+      {/* Toast Notifications */}
+      <Toaster />
     </div>
   );
 }

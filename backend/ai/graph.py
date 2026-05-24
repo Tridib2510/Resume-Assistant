@@ -1,6 +1,6 @@
 from ai.state import AgentState
 from ai.router import llm, llm_with_structure, question_router
-from langchain_classic.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -162,7 +162,7 @@ def chat(state:AgentState):
     
 
     SYSTEM_PROMPT = """You are an advanced resume analysis assistant.
-
+If the uploaded document is not a resume return "Please upload a valid resume"
 Your task is to answer questions about a candidate by returning ONLY a valid JSON object.
 
 Return this exact JSON structure (no other text):
@@ -213,6 +213,20 @@ Chat History:
     print(f'context_str length: {len(context_str)}')
     print(f'question: {question[:100] if question else "EMPTY"}')
 
+    # If no documents found, return an error response indicating invalid resume
+    if not docs or len(context_str) == 0:
+        print("No resume content found - returning error response")
+        error_response = LLMResponseStructure(
+            generation="Please upload a valid resume. The uploaded document does not appear to be a resume or could not be parsed.",
+            applicant=Answer(),
+            confidence=0.0,
+            source="inference",
+            missing_data=["resume content not found"]
+        )
+        return {
+            "answer": error_response,
+        }
+
     # Use ChatAnthropic with structured output for JSON responses
     chat_llm = ChatAnthropic(model="claude-sonnet-4-6", anthropic_api_key=anthropic_api_key)
     chat_llm_with_response = chat_llm.with_structured_output(LLMResponseStructure)
@@ -240,14 +254,20 @@ def checkResponse(state:AgentState):
     """
     Check the response given by the llm
     """
-    answer=state['answer']
+    answer=state.get('answer')
 
-    print(answer.generation)
-    print(answer.generation=='None')
+    if answer is None:
+        # No answer means the resume parsing failed or returned nothing
+        return 'end'
 
-    
+    print('answer:', answer)
+    print('generation:', answer.generation)
 
-    if answer.generation:
+    # Check if the document is not a valid resume
+    if answer.generation and "Please upload a valid resume" in answer.generation:
+        return 'end'
+
+    if answer.generation and answer.generation.strip():
         return 'end'
     else:
         return 'chat'
