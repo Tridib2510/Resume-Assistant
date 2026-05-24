@@ -111,13 +111,13 @@ Agentic_AI_System/
 cd backend
 
 # Create and activate virtual environment
-python -m venv .venv
+uv venv
 
 # Activate virtual environment (Windows)
-.\.venv\Scripts\activate
+.venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+uv add  -r requirements.txt
 
 # Create .env file with your API keys
 # ANTHROPIC_API_KEY=your_key
@@ -138,13 +138,13 @@ Backend will run at `http://localhost:8000`
 cd frontend
 
 # Install dependencies
-npm install
+bun install
 
 # Start development server
-npm run dev
+bun dev dev
 ```
 
-Frontend will run at `http://localhost:5173` (or next available port)
+Frontend will run at `http://localhost:3000` (or next available port)
 
 ---
 
