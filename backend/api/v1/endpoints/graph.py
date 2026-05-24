@@ -55,18 +55,18 @@ class ChatRequest(BaseModel):
 
 async def chat_event_generator(user_id: str, query: str):
     config = {"configurable": {"thread_id": user_id}}
-    for event in graph.stream({
+    async for event in graph.astream({
         "messages": [("user", query)],
         "user_id": user_id
     }, config=config):
         for node_name, state in event.items():
             if node_name == "chat":
-                if "answer" in state and state["answer"]:
-                    # For chat, use the generation field (text response) not applicant
+               if "answer" in state and state["answer"]:
+                    # LLMResponseStructure has applicant (Answer object) and generation (text)
                     result = state["answer"]
                     yield f"data: {result}"
 
-                if "documents" in state and state["documents"]:
+               if "documents" in state and state["documents"]:
                     for doc in state["documents"][:2]:
                         yield f"data: [DOC] {doc[:300]}\n\n"
 
@@ -75,5 +75,5 @@ async def chat_event_generator(user_id: str, query: str):
 async def chat(request: ChatRequest):
     return StreamingResponse(
         chat_event_generator(request.user_id, request.query),
-        media_type="application/json"
+        media_type="text/event-stream"
     )

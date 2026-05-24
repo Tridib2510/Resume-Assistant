@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Literal
-from langchain_groq import ChatGroq
+from langchain_anthropic import ChatAnthropic
 from langchain_classic.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 import os
@@ -8,13 +8,13 @@ import os
 load_dotenv()
 
 groq_api_key=os.environ['GROQ_API_KEY']
+anthropic_api_key=os.environ['ANTHROPIC_API_KEY']
 
 class Router(BaseModel):
     datasource :Literal['chat','extract_resume_data']=Field(...,description="Given a user question choose to route it to wikipedia or a vectorstore")
 
 
-llm=ChatGroq(api_key=groq_api_key,model="llama-3.3-70b-versatile")
-
+llm=ChatAnthropic(model="claude-sonnet-4-6", anthropic_api_key=anthropic_api_key)
 llm_with_structure=llm.with_structured_output(Router)
 
 
